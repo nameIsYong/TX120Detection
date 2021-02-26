@@ -17,7 +17,7 @@ Pod::Spec.new do |spec|
 
   spec.name         = "TX120Detection"
   spec.version      = "0.0.1"
-  spec.summary      = "Copyright © 2021年 天下医生. All rights reserved."
+  spec.summary      = "四合一蓝牙检测模块"
 
   # This description is used to generate tags and improve search results.
   #   * Think: What does it do? Why did you write it? What is the focus?
