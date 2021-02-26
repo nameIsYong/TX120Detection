@@ -134,7 +134,11 @@ extension DetectionWebVC{
     func backVC(){
         if self.navigationController != nil {
             //prent过来的
+            #if swift(>=4.2)
+            let fristVC = self.navigationController?.children.first
+            #else
             let fristVC = self.navigationController?.childViewControllers.first
+            #endif
             if fristVC != nil && fristVC == self{
                 self.dismiss(animated: true, completion: nil)
             }else{
