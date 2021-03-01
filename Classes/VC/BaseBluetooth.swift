@@ -46,7 +46,7 @@ class BaseBluetooth: NSObject {
         timeout = timeOutCount
         self.timer  = Timer.scheduledTimer(timeInterval: 1.0, target: self, selector: #selector(checkDidCounted), userInfo: nil, repeats: true)
         
-        #if swift(>=4.2)
+        #if swift(>=4.2)//适配版本
         RunLoop.current.add(timer!, forMode: RunLoop.Mode.common)
         #else
         RunLoop.current.add(timer!, forMode: RunLoopMode.commonModes)
