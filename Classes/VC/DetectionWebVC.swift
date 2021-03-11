@@ -10,7 +10,7 @@ import UIKit
 import WebKit
 import JavaScriptCore
 
-class DetectionWebVC: UIViewController,TX120JSExportDelegate{
+public class DetectionWebVC: UIViewController,TX120JSExportDelegate{
     var url: String = ""
     
     var webView: WKWebView!
@@ -20,7 +20,7 @@ class DetectionWebVC: UIViewController,TX120JSExportDelegate{
     private let kNotif_Progress = "estimatedProgress"
     private let kNotif_DismissWeb = "dismissWeb"
     
-    override func viewDidLoad() {
+    public override func viewDidLoad() {
         super.viewDidLoad()
         TX120Helper.Log("--url-----\(url)")
         if url.count == 0{return}
@@ -39,7 +39,7 @@ class DetectionWebVC: UIViewController,TX120JSExportDelegate{
     }
    
     //获取注册方法(子类增加并实现自己的方法)
-    func getRegisteMethods()->[(target:NSObject,method:Selector)]{
+    public func getRegisteMethods()->[(target:NSObject,method:Selector)]{
         //.... 子类实现自己的方法
         return [(self,#selector(goBack))]
     }
@@ -103,7 +103,7 @@ class DetectionWebVC: UIViewController,TX120JSExportDelegate{
         
     }
     
-    override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey : Any]?, context: UnsafeMutableRawPointer?) {
+    public override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey : Any]?, context: UnsafeMutableRawPointer?) {
         if keyPath == kNotif_Progress {
             progressView.setProgress(Float(webView.estimatedProgress), animated: true)
             if self.progressView.progress == 1 {

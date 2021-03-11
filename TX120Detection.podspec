@@ -16,7 +16,7 @@ Pod::Spec.new do |spec|
   #
 
   spec.name         = "TX120Detection"
-  spec.version      = "0.0.3"
+  spec.version      = "0.0.4"
   spec.summary      = "四合一蓝牙检测模块"
 
   # This description is used to generate tags and improve search results.

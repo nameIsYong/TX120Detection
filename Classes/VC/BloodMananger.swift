@@ -10,7 +10,12 @@ import CoreBluetooth
 import UIKit
 
 ///连接状态
-protocol BloodManagerDelegate: class {
+protocol BloodBluethStatusDelegate: BluetoothConnectDelegate {
+    
+}
+
+///数据读写
+protocol BluetoothWriteReadDelegate: class {
     ///找到了写服务
     func deviceFind(manager:BloodMananger,write:CBCharacteristic)
     ///找到了读服务
@@ -19,12 +24,13 @@ protocol BloodManagerDelegate: class {
     func deviceDidReceive(manager:BloodMananger,data:Data)
 }
 
-///检测结果解析代理（也可自己实现deviceDidReceive来解析数据）
-protocol BloodDataDelegate: class {
+
+///检测设备代理（也可自己实现deviceDidReceive来解析数据）
+protocol BloodDeviceDelegate: class {
     
-    ///插入试纸
-    func paperOnInsert(manager:BloodMananger,error:String?)
-    ///试纸状态改变（插入试纸，拔出试纸...）
+    ///插入错误试纸则会报错回调
+    func paperInsertOn(error:String,manager:BloodMananger)
+    ///试纸状态改变（试纸已插入，试纸已拔出...）
     func paperOnChange(manager:BloodMananger,status:PaperStatus,info:String?)
     ///获取到检测时间
     func onGetDetectionTime(manager:BloodMananger,time:Int)
@@ -37,11 +43,11 @@ protocol BloodDataDelegate: class {
 ///三合一检测类型
 enum PaperStatus: String {
     ///插入试纸
-    case k_PaperIn = "TextPaperIN"
+    case k_didPaperIn = "TextPaperIN"
     ///滴入血液
-    case t_DropLiquid = "DropLiquid"
+    case t_didDropLiquid = "DropLiquid"
     ///试纸拔出
-    case t_TextPaperOut = "TextPaperOut"
+    case t_didTextPaperOut = "TextPaperOut"
     ///检测中
     case t_Checking = "exting Please wait"
     ///试纸过期
@@ -50,7 +56,8 @@ enum PaperStatus: String {
     case t_Error_PaperExceed = "ERR2"
     ///滴入血量有误
     case t_Error_Operation = "ERR3"
-    
+    ///试纸类型错误
+    case t_Error_PaperType = "TextPaperError"
     ///系统错误
     case t_Error_Sys = "ERR4"
     ///测量完成
@@ -67,13 +74,19 @@ enum DetectionType: String {
     case t_Chol = "Cholesterol"
     ///血酮
     case t_Ketone = "Blood_Ketone"
+    ///甘油三酯
+    case t_TG = "t_TG"
+    ///高密度
+    case t_HDL = "t_HDL"
 }
 
 class BloodMananger: BaseBluetooth {
+    ///蓝牙链接状态
+    public weak var statusDelegate:BloodBluethStatusDelegate?
     ///读写服务代理
-    public weak var writeReadDelegate:BloodManagerDelegate?
+    public weak var writeReadDelegate:BluetoothWriteReadDelegate?
     ///数据回调代理
-    public weak var valueDelegate:BloodDataDelegate?
+    public weak var deviceDelegate:BloodDeviceDelegate?
     
     //写入特征
     private var writeCharacteristic: CBCharacteristic?
@@ -85,6 +98,28 @@ class BloodMananger: BaseBluetooth {
     private let kDeviceReadUUID = "FFE4"
     private let kDeviceWriteUUID = "FFE8"
     private var lastOperation = ""
+    
+    ///三代产品兼容
+    public func getDeviceNameList()->[String]{
+        return ["j-tianxia120","Laya","MKTECH"]
+    }
+    
+    ///默认的检测等待时间
+    public func getDefaultTimeBy(_ detectionType:DetectionType)->Int{
+        switch detectionType{
+        case .t_Sugar:
+            return 6
+        case .t_Uric:
+            return 20
+        case .t_Chol:
+            return 60
+        case .t_Ketone:
+            return 6
+        default:return 0
+        }
+    }
+   
+    
     deinit {
         TX120Helper.Log("BloodMananger----deinit")
     }
@@ -101,7 +136,7 @@ extension BloodMananger{
         stopDetection()
         manager = CBCentralManager(delegate: nil, queue: nil)
         manager.delegate = self
-        self.statusDelegate = self//default
+        self.connectDelegate = self//default
         self.detectionType = type
         self.deviceNames = deviceNames
         self.lastOperation = ""
@@ -111,9 +146,10 @@ extension BloodMananger{
     
 }
 
-extension BloodMananger:BluetoothStatusDelegate{
+extension BloodMananger:BluetoothConnectDelegate{
     ///蓝牙链接失败
-    func connectFail(manager: BaseBluetooth, status: CBManagerState?, error: String?) {
+    internal func connectFail(manager: BaseBluetooth, status: CBManagerState?, error: String?) {
+        statusDelegate?.connectFail(manager: self, status: status, error: error)
         if let msg = error,msg.count > 0{
             if status == .poweredOff{
                 UIAlertController.alert_(vc: nil, msg:"蓝牙未开启，是否去开启") {
@@ -123,19 +159,20 @@ extension BloodMananger:BluetoothStatusDelegate{
                 UIAlertController.alert_(msg)
             }
         }
-        
     }
     
     ///蓝牙链接成功
-    func didConnected(manager: BaseBluetooth) {
+    internal func didConnected(manager: BaseBluetooth) {
         manager.curPheral?.delegate = self
         let uuids = [CBUUID(string:kDeviceServiceUUID)]
         manager.curPheral?.discoverServices(uuids)
+        statusDelegate?.didConnected(manager: manager)
     }
     
     ///蓝牙断开
-    func didDisconnect(manager: BaseBluetooth) {
+    internal func didDisconnect(manager: BaseBluetooth) {
         UIAlertController.alert_("蓝牙已断开")
+        statusDelegate?.didDisconnect(manager: manager)
     }
     
 }
@@ -195,12 +232,12 @@ extension BloodMananger: CBPeripheralDelegate {
         
         writeReadDelegate?.deviceDidReceive(manager:self, data:data)
         //若用户实现了该代理，则自动为其解析对应数据类型，否则通过上面代理，让用户自己解析
-        if let valueDel = valueDelegate{
+        if let valueDel = deviceDelegate{
             
             //插入试纸监听
             let obj = BloodMananger.getPaperType(receiveStr, detectionType: detectionType)
-            if obj.isInserPaper{
-                valueDel.paperOnInsert(manager: self, error: obj.error)
+            if obj.isInserPaper,let error = obj.error{
+                valueDel.paperInsertOn(error: error, manager: self)
             }
             
             //获取监测等待时间
@@ -315,7 +352,7 @@ extension BloodMananger{
         if valueFloat > 0 {
             //第一代老设备
             if deviceNames.contains("Laya"){
-                switch self.detectionType{
+                switch detectionType{
                 case .t_Sugar:
                     valueFloat = valueFloat / 18.0
                 case .t_Uric:
@@ -324,7 +361,8 @@ extension BloodMananger{
                     valueFloat = valueFloat / 38.67
                 case .t_Ketone:
                     valueFloat = valueFloat / 10.4
-                case .none:break
+                default:
+                    break
                 }
                 
             }else{ //新设备MKTECH
@@ -337,7 +375,7 @@ extension BloodMananger{
                     valueFloat = valueFloat / 100
                 case .t_Ketone:
                     valueFloat = valueFloat/100 //10.4
-                case .none:
+                default:
                     break
                 }
             }
@@ -362,14 +400,14 @@ extension BloodMananger{
     
     //获取蓝牙状态
     class func getPaperStatus(ext:String)->(type:PaperStatus?,info:String?){
-        if (ext.contains(PaperStatus.k_PaperIn.rawValue)){
-            return (.k_PaperIn,"试纸插入成功，请滴入血液")
+        if (ext.contains(PaperStatus.k_didPaperIn.rawValue)){
+            return (.k_didPaperIn,"试纸插入成功，请滴入血液")
         }
-        if (ext.contains(PaperStatus.t_DropLiquid.rawValue)) {
-            return (.t_DropLiquid,"血液滴入成功，请等待结果")
+        if (ext.contains(PaperStatus.t_didDropLiquid.rawValue)) {
+            return (.t_didDropLiquid,"血液滴入成功，请等待结果")
         }
-        if (ext.contains(PaperStatus.t_TextPaperOut.rawValue)) {
-            return (.t_TextPaperOut,"试纸拔出")
+        if (ext.contains(PaperStatus.t_didTextPaperOut.rawValue)) {
+            return (.t_didTextPaperOut,"试纸拔出")
         }
         if (ext.contains(PaperStatus.t_Error_Init.rawValue)) {
             return (.t_Error_Init,"开机自检异常")

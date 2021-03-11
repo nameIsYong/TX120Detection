@@ -9,14 +9,14 @@ import Foundation
 import CoreBluetooth
 
 ///连接状态
-protocol BluetoothStatusDelegate: class {
+protocol BluetoothConnectDelegate: class {
     func connectFail(manager:BaseBluetooth,status:CBManagerState?,error:String?)
     func didConnected(manager:BaseBluetooth)
     func didDisconnect(manager:BaseBluetooth)
 }
 
 class BaseBluetooth: NSObject {
-    public weak var statusDelegate:BluetoothStatusDelegate?
+    public weak var connectDelegate:BluetoothConnectDelegate?
     //蓝牙检测
     public var manager:CBCentralManager!
     ///当前设备
@@ -54,6 +54,16 @@ class BaseBluetooth: NSObject {
         
     }
     
+    ///是否蓝牙已连接或检测中
+    public func isDetectioning()->Bool{
+        let connecting = timer?.isValid ?? false
+        let isCon = curPheral != nil
+        if connecting || isCon{
+            return true
+        }
+        return false
+    }
+    
     deinit {
         removeTimer()
     }
@@ -76,17 +86,17 @@ extension BaseBluetooth: CBCentralManagerDelegate {
         case .poweredOff:
             message = "手机蓝牙未开启，请开启蓝牙"
         case .poweredOn:
-            if deviceNames.isEmpty || statusDelegate == nil{
+            if deviceNames.isEmpty || connectDelegate == nil{
                 TX120Helper.Log("请实现BluetoothStatusDelegate")
-                removeTimer()
-                return}
+                removeTimer();return
+            }
             central.scanForPeripherals(withServices: nil, options: nil)
         @unknown default:
             message = "连接错误"
         }
         if let error = message,error.count > 0{
             removeTimer()
-            statusDelegate?.connectFail(manager: self, status: central.state, error: message)
+            connectDelegate?.connectFail(manager: self, status: central.state, error: message)
         }
     }
     
@@ -96,7 +106,7 @@ extension BaseBluetooth: CBCentralManagerDelegate {
         let findName = peripheral.name ?? ""
         TX120Helper.Log("设备名-->"+(findName))
         for name in deviceNames{
-            if name.contains(findName){
+            if findName.contains(name){
                 curPheral = peripheral
                 central.connect(peripheral, options: nil)
                 break
@@ -108,19 +118,19 @@ extension BaseBluetooth: CBCentralManagerDelegate {
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
         central.stopScan()
         removeTimer()
-        statusDelegate?.didConnected(manager: self)
+        connectDelegate?.didConnected(manager: self)
     }
     
     ///连接失败
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
         removeTimer()
-        statusDelegate?.connectFail(manager: self, status: nil, error: error?.localizedDescription)
+        connectDelegate?.connectFail(manager: self, status: nil, error: error?.localizedDescription)
         
     }
     
     ///断开连接
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
-        statusDelegate?.didDisconnect(manager: self)
+        connectDelegate?.didDisconnect(manager: self)
     }
     
 }
@@ -140,7 +150,7 @@ extension BaseBluetooth{
     
         if (timeout <= 0) {
             stopDetection()
-            statusDelegate?.connectFail(manager: self, status: nil, error: "连接超时，请确认检测设备和手机已开启蓝牙")
+            connectDelegate?.connectFail(manager: self, status: nil, error: "连接超时，请确认检测设备和手机已开启蓝牙")
         }else{
             timeout = timeout - 1
             TX120Helper.Log("-------倒计时-->\(self.timeout)")
